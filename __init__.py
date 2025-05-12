@@ -24,10 +24,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+async def async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
     try:
-        # Use newer API to unload platforms
         unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
     except Exception as err:
         _LOGGER.error("Error unloading modbus_charger entry: %s", err)
@@ -38,3 +37,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         _LOGGER.debug("Modbus Charger config entry unloaded: %s", entry.entry_id)
 
     return unload_ok
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Reload a config entry."""
+    await async_unload_entry(hass, entry)
+    return await async_setup_entry(hass, entry)
