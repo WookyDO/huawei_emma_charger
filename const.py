@@ -7,7 +7,7 @@ CONF_SLAVE_ID = "slave_id"
 CONF_SCAN_INTERVAL = "scan_interval"
 
 DEFAULT_PORT = 502
-DEFAULT_SLAVE_ID = 82
+DEFAULT_SLAVE_ID = 0
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 # Register definitions: (key, name, address, quantity, type, gain, unit)
