@@ -49,6 +49,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         try:
             if not client.connect():
                 raise ConnectionError(f"Modbus connect failed to {self.host}:{self.port}")
+            # use slave= instead of deprecated unit=
             response = client.read_holding_registers(address, count, slave=slave_id)
             if isinstance(response, ExceptionResponse) or response.isError():
                 raise ModbusException(f"Error reading registers: {response}")
@@ -58,7 +59,6 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         data = {}
-        # Discover charger sub-devices dynamically
         chargers = await self.hass.async_add_executor_job(
             identify_subdevices,
             self.host,
@@ -78,18 +78,18 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     data[data_key] = {
                         "name": f"{name} (Slave {sid})",
                         "value": value,
-                        "unit": slave,
+                        "unit": unit,
                         "slave_id": sid,
                     }
                 except Exception as err:
-                    _LOGGER.error("Error reading sensor %s for slave %s: %s", sensor_key, sid, err)
+                    _LOGGER.error(
+                        "Error reading sensor %s for slave %s: %s", sensor_key, sid, err
+                    )
         return data
 
 
 def _convert(registers: list[int], reg_type: str, gain: int):
-    """Convert register values based on type and gain."""
     if reg_type == "STR":
-        # Concatenate registers into bytes and decode ascii
         raw_bytes = b"".join(reg.to_bytes(2, "big") for reg in registers)
         return raw_bytes.decode("ascii", errors="ignore").rstrip("\x00")
     if reg_type == "U32":
@@ -97,7 +97,6 @@ def _convert(registers: list[int], reg_type: str, gain: int):
         return raw / gain
     if reg_type == "I32":
         import struct
-
         b = struct.pack(">HH", registers[0], registers[1])
         raw = struct.unpack(">i", b)[0]
         return raw / gain
@@ -116,17 +115,17 @@ async def async_setup_entry(
     interval_seconds = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     scan_interval = timedelta(seconds=interval_seconds)
 
-    coordinator = HuaweiEmmaChargerCoordinator(hass, host, port, slave_id, scan_interval)
+    coordinator = HuaweiEmmaChargerCoordinator(
+        hass, host, port, slave_id, scan_interval
+    )
     try:
         await coordinator.async_config_entry_first_refresh()
     except Exception as err:
         _LOGGER.error("First refresh failed: %s", err)
         raise
 
-    entities = []
-    for data_key in coordinator.data:
-        entities.append(HuaweiEmmaChargerSensor(coordinator, data_key))
-
+    entities = [HuaweiEmmaChargerSensor(coordinator, data_key)
+                for data_key in coordinator.data]
     async_add_entities(entities)
 
 
