@@ -95,7 +95,9 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
             if tot_key in data:
+                from datetime import datetime
                 curr = data[tot_key]["value"]
+                now = datetime.utcnow()
                 prev = self._last_energy.get(sid)
                 last_power = getattr(self, "_last_power", {}).get(sid, 0.0)
                 if prev is None:
@@ -109,9 +111,16 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                             sid, curr, prev
                         )
                         delta = 0.0
-                    # fixed 30 s polling interval
-                    secs = self.update_interval.total_seconds()
-                    power = (delta * 3600.0) / secs if delta > 0 else last_power
+                # actual elapsed time in hours:
+                prev_time = self._last_time.get(sid)
+                if prev_time:
+                    elapsed_h = (now - prev_time).total_seconds() / 3600.0
+                else:
+                    elapsed_h = self.update_interval.total_seconds() / 3600.0
+ 
+                # compute or reuse last non-zero
+                power = (delta / elapsed_h) if delta > 0 and elapsed_h > 0 else last_power
+
                     _LOGGER.debug(
                             "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
                             sid, secs, curr, prev, power
@@ -126,6 +135,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                 }
                 # store for next cycle
                 self._last_energy[sid] = curr
+                self._last_time[sid] = now
                 if power > 0:
                     self._last_power[sid] = power
         return data
