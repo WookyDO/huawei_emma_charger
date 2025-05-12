@@ -53,6 +53,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         self.slave_id = slave_id
         self._last_energy: dict[int, float] = {}
         self._last_time: dict[int, datetime] = {}
+        self._last_power: dict[int, float] = {}  
 
     def _read_registers(self, slave: int, address: int, count: int) -> list[int]:
         """Read holding registers from the device."""
