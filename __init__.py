@@ -8,10 +8,11 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the integration (only called for YAML mode)."""
-    # We handle everything via config entries
     return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up a config entry (called by the UI)."""
@@ -24,7 +25,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     return True
 
-async def async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
     try:
         unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
@@ -37,6 +39,7 @@ async def async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         _LOGGER.debug("Modbus Charger config entry unloaded: %s", entry.entry_id)
 
     return unload_ok
+
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Reload a config entry."""
