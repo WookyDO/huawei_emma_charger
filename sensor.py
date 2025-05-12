@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusIOException, ModbusException
 from pymodbus.pdu import ExceptionResponse
@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
-from homeassistant.helpers.entity import DeviceInfo  # <-- Import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import (
     DOMAIN,
@@ -23,7 +23,6 @@ from .const import (
     SENSOR_TYPES,
 )
 from .read_device_info import identify_subdevices
-from homeassistant.helpers.entity import DeviceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         self.slave_id = slave_id
         self._last_energy: dict[int, float] = {}
         self._last_time: dict[int, datetime] = {}
-        self._last_power: dict[int, float] = {}  
+        self._last_power: dict[int, float] = {}
 
     def _read_registers(self, slave: int, address: int, count: int) -> list[int]:
         """Read holding registers from the device."""
@@ -95,16 +94,19 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
             if tot_key in data:
-                from datetime import datetime
                 curr = data[tot_key]["value"]
                 now = datetime.utcnow()
                 prev = self._last_energy.get(sid)
-                last_power = getattr(self, "_last_power", {}).get(sid, 0.0)
+                last_power = self._last_power.get(sid, 0.0)
+
+                # calculate elapsed seconds
+                prev_time = self._last_time.get(sid)
+                secs = (now - prev_time).total_seconds() if prev_time else self.update_interval.total_seconds()
+
+                # energy delta (kWh), clamp negative
                 if prev is None:
-                    power = 0.0
                     delta = 0.0
                 else:
-                    # energy delta (kWh), clamp negative
                     delta = curr - prev
                     if delta < 0:
                         _LOGGER.debug(
@@ -112,19 +114,16 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                             sid, curr, prev
                         )
                         delta = 0.0
-                # actual elapsed time in hours:
-                prev_time = self._last_time.get(sid)
-                if prev_time:
-                    elapsed_h = (now - prev_time).total_seconds() / 3600.0
-                else:
-                    elapsed_h = self.update_interval.total_seconds() / 3600.0
- 
+
+                # compute elapsed hours
+                elapsed_h = secs / 3600.0 if secs > 0 else 0
+
                 # compute or reuse last non-zero
                 power = (delta / elapsed_h) if delta > 0 and elapsed_h > 0 else last_power
                 _LOGGER.debug(
                     "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
                     sid, secs, curr, prev, power
-                    )
+                )
 
                 data[inst_key] = {
                     "name": "Instantaneous Power",
@@ -225,14 +224,12 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
     ):
         super().__init__(coordinator)
         self._data_key = data_key
-        # Build DeviceInfo once per slave
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{coordinator.host}_{slave_id}")},
+            identifiers={(DOMAIN, f"{coordinator.host}_{slave_id}" )},
             name=f"Huawei Charger {slave_id}",
             manufacturer="Huawei",
             model="EMMA Charger",
         )
-        # Set entity properties
         self._attr_name = f"{name} (Slave {slave_id})"
         if rtype == "STR":
             self._attr_native_unit_of_measurement = None
