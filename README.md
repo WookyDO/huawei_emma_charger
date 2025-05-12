@@ -8,6 +8,8 @@ Custom integration to read data for Huawei FusionCharge from Huawei EMMA sub_dev
 
 * **Modbus polling** of charger registers (strings & numerics)
 * **Instantaneous Power** sensor (`sensor.charger_instant_power`) calculating kW from energy deltas
+* **Autodiscovery of EMMA sub-devices**  
+  Automatically finds all attached “CHARGER” sub-devices and instantiates sensors for each slave ID.  
 
 ---
 
@@ -36,9 +38,9 @@ Custom integration to read data for Huawei FusionCharge from Huawei EMMA sub_dev
 2. Search for **Huawei Emma Charger**.
 3. Fill in:
 
-   * **Host**: Charger IP/hostname
+   * **Host**: EMMA IP/hostname
    * **Port**: Modbus TCP port (default `502`)
-   * **Slave ID**: Modbus address (default `82`)
+   * **Slave ID**: EMMA Modbus address (default `0`)
    * **Scan Interval**: Polling interval in seconds (default `30`)
 4. Finish to add your charger.
 
