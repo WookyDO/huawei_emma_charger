@@ -92,57 +92,62 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                 except Exception as err:
                     _LOGGER.error("Error reading %s from slave %s: %s", key, sid, err)
 
-            # Compute instantaneous power
-            curr       = data[tot_key]["value"]               # kWh reading right now
-            now        = datetime.utcnow()
-            prev       = self._last_energy.get(sid)           # last kWh we saw
-            prev_time  = self._last_time.get(sid)             # last timestamp we saw
-            last_power = self._last_power.get(sid, 0.0)       # fallback power
+            tot_key  = f"total_energy_{sid}"
+            inst_key = f"instant_power_{sid}"
 
-            # compute elapsed seconds
-            if prev_time is not None:
-                secs = (now - prev_time).total_seconds()
-            else:
-                secs = self.update_interval.total_seconds()
+            if tot_key in data:
+                # ← this must be here:
+                curr       = data[tot_key]["value"]               # kWh reading right now
 
-            # compute delta in kWh, clamp negatives (rollover/reset)
-            if prev is None:
-                delta = 0.0
-            else:
-                raw_delta = curr - prev
-                delta     = raw_delta if raw_delta > 0 else 0.0
+                now        = datetime.utcnow()
+                prev       = self._last_energy.get(sid)           # last kWh we saw
+                prev_time  = self._last_time.get(sid)             # last timestamp we saw
+                last_power = self._last_power.get(sid, 0.0)       # fallback power
 
-            # convert to hours
-            hours = secs / 3600.0 if secs > 0 else 0.0
+                # compute elapsed seconds
+                if prev_time is not None:
+                    secs = (now - prev_time).total_seconds()
+                else:
+                    secs = self.update_interval.total_seconds()
 
-            # decide power:
-            #  - if we saw actual energy usage, compute it
-            #  - else if no movement and it's been ≥5 min, report 0
-            #  - else (no movement but <5 min), reuse last_power
-            if delta > 0 and hours > 0:
-                power = delta / hours
-            elif secs >= 300:
-                power = 0.0
-            else:
-                power = last_power
+                # compute delta in kWh, clamp negatives (rollover/reset)
+                if prev is None:
+                    delta = 0.0
+                else:
+                    raw_delta = curr - prev
+                    delta     = raw_delta if raw_delta > 0 else 0.0
 
-            _LOGGER.debug(
-                "Slave %s: ΔE=%.6f kWh over %.1f s → P=%.3f kW",
-                sid, delta, secs, power
-            )
+                # convert to hours
+                hours = secs / 3600.0 if secs > 0 else 0.0
 
-            data[inst_key] = {
-                "name":  "Instantaneous Power",
-                "value": round(power, 3),
-                "unit":  "kW",
-                "rtype": "U32",
-                "slave_id": sid,
-            }
+                # decide power:
+                #  - if we saw actual energy usage, compute it
+                #  - else if no movement and it's been ≥5 min, report 0
+                #  - else (no movement but <5 min), reuse last_power
+                if delta > 0 and hours > 0:
+                    power = delta / hours
+                elif secs >= 300:
+                    power = 0.0
+                else:
+                    power = last_power
 
-            # store for next iteration
-            self._last_energy[sid] = curr
-            self._last_time[sid]   = now
-            self._last_power[sid]  = power
+                _LOGGER.debug(
+                    "Slave %s: ΔE=%.6f kWh over %.1f s → P=%.3f kW",
+                    sid, delta, secs, power
+                )
+
+                data[inst_key] = {
+                    "name":  "Instantaneous Power",
+                    "value": round(power, 3),
+                    "unit":  "kW",
+                    "rtype": "U32",
+                    "slave_id": sid,
+                }
+
+                # store for next iteration
+                self._last_energy[sid] = curr
+                self._last_time[sid]   = now
+                self._last_power[sid]  = power
         return data
 
 
