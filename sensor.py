@@ -120,12 +120,11 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
  
                 # compute or reuse last non-zero
                 power = (delta / elapsed_h) if delta > 0 and elapsed_h > 0 else last_power
-
-                    _LOGGER.debug(
-                            "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
-                            sid, secs, curr, prev, power
-                        )
-
+                _LOGGER.debug(
+                    "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
+                    sid, secs, curr, prev, power
+                    )
+                    
                 data[inst_key] = {
                     "name": "Instantaneous Power",
                     "value": round(power, 3),
