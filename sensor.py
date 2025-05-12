@@ -8,12 +8,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, STATE_CLASS_MEASUREMENT, STATE_CLASS_TOTAL_INCREASING
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, STATE_CLASS_TOTAL_INCREASING
 
 from .const import (
-    CONF_HOST,
-    CONF_PORT,
     DOMAIN,
+    CONF_HOST, 
+    CONF_PORT,
     CONF_SLAVE_ID,
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
@@ -75,18 +76,13 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             sid = charger["slave_id"]
             # Read all defined sensors
             for key, name, address, quantity, rtype, gain, unit in SENSOR_TYPES:
+                data_key = f"{key}_{sid}"
                 try:
                     regs = await self.hass.async_add_executor_job(
                         self._read_registers, sid, address, quantity
                     )
                     value = _convert(regs, rtype, gain)
-                    data_key = f"{key}_{sid}"
-                    data[data_key] = {
-                        "name": name,
-                        "value": value,
-                        "unit": unit,
-                        "slave_id": sid,
-                    }
+                    data[data_key] = {"name": name, "value": value, "unit": unit, "rtype": rtype, "slave_id": sid}
                 except Exception as err:
                     _LOGGER.error("Error reading %s from slave %s: %s", key, sid, err)
             # Compute instantaneous power
@@ -101,12 +97,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     delta = curr - prev  # kWh delta
                     secs = self.update_interval.total_seconds()
                     power = (delta * 3600.0) / secs
-                data[inst_key] = {
-                    "name": "Instantaneous Power",
-                    "value": round(power, 3),
-                    "unit": "kW",
-                    "slave_id": sid,
-                }
+                data[inst_key] = {"name": "Instantaneous Power", "value": round(power, 3), "unit": "kW", "rtype": "U32", "slave_id": sid}
                 self._last_energy[sid] = curr
         return data
 
@@ -145,28 +136,35 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
     for key, info in coordinator.data.items():
+        rtype = info.get("rtype")
         unit = info.get("unit")
+        slave_id = info.get("slave_id")
         # Determine device_class & state_class
-        if unit == "kWh":
-            device_class = SensorDeviceClass.ENERGY
-            state_class = STATE_CLASS_TOTAL_INCREASING
-        elif unit == "kW":
-            device_class = SensorDeviceClass.POWER
-            state_class = STATE_CLASS_MEASUREMENT
-        elif unit == "V":
-            device_class = SensorDeviceClass.VOLTAGE
-            state_class = STATE_CLASS_MEASUREMENT
-        elif unit == "°C":
-            device_class = SensorDeviceClass.TEMPERATURE
-            state_class = STATE_CLASS_MEASUREMENT
-        else:
-            device_class = None
-            state_class = STATE_CLASS_MEASUREMENT
+        device_class = None
+        state_class = None
+        if rtype != "STR":
+            # numeric sensor
+            if unit == "kWh":
+                device_class = SensorDeviceClass.ENERGY
+                state_class = STATE_CLASS_TOTAL_INCREASING
+            elif unit == "kW":
+                device_class = SensorDeviceClass.POWER
+                state_class = STATE_CLASS_MEASUREMENT
+            elif unit == "V":
+                device_class = SensorDeviceClass.VOLTAGE
+                state_class = STATE_CLASS_MEASUREMENT
+            elif unit == "°C":
+                device_class = SensorDeviceClass.TEMPERATURE
+                state_class = STATE_CLASS_MEASUREMENT
         entity = HuaweiEmmaChargerSensor(
             coordinator,
             key,
+            info.get("name"),
+            rtype,
+            unit,
             device_class,
             state_class,
+            slave_id,
         )
         entities.append(entity)
     async_add_entities(entities)
@@ -179,18 +177,26 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
         self,
         coordinator: HuaweiEmmaChargerCoordinator,
         data_key: str,
+        name: str,
+        rtype: str,
+        unit: str,
         device_class: SensorDeviceClass | None,
-        state_class: str,
+        state_class: str | None,
+        slave_id: int,
     ):
         super().__init__(coordinator)
-        info = coordinator.data[data_key]
-        # Set entity properties
-        self._attr_name = f"{info['name']} (Slave {info['slave_id']})"
-        self._attr_native_unit_of_measurement = info.get("unit")
-        self._attr_device_class = device_class
-        self._attr_state_class = state_class
-        self._attr_unique_id = f"{DOMAIN}_{data_key}"
         self._data_key = data_key
+        # Set entity properties
+        self._attr_name = f"{name} (Slave {slave_id})"
+        if rtype == "STR":
+            self._attr_native_unit_of_measurement = None
+            self._attr_device_class = None
+            self._attr_state_class = None
+        else:
+            self._attr_native_unit_of_measurement = unit
+            self._attr_device_class = device_class
+            self._attr_state_class = state_class
+        self._attr_unique_id = f"{DOMAIN}_{data_key}"
 
     @property
     def native_value(self):
