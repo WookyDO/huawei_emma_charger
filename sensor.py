@@ -12,6 +12,7 @@ from homeassistant.components.sensor import SensorEntity
 
 from .const import (
     DOMAIN,
+    CONF_HOST,
     CONF_SLAVE_ID,
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
@@ -22,13 +23,6 @@ from .const import (
 
 from homeassistant.components.sensor import SensorDeviceClass
 
-from .const import (
-    DOMAIN,
-    DEFAULT_PORT,
-    DEFAULT_SLAVE_ID,
-    DEFAULT_SCAN_INTERVAL,
-    SENSOR_TYPES,
-)
 from .read_device_info import identify_subdevices
 
 _LOGGER = logging.getLogger(__name__)
