@@ -94,24 +94,26 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
             if tot_key in data:
-                from datetime import datetime
-
-                curr = data[tot_key]["value"]  # in kWh
-                now = datetime.utcnow()
+                curr = data[tot_key]["value"]
                 prev = self._last_energy.get(sid)
-                prev_time = self._last_time.get(sid)
-
-                if prev is None or prev_time is None:
-                    # first reading, can't compute a delta
+                if prev is None:
                     power = 0.0
                 else:
-                    # actual elapsed hours
-                    elapsed_h = (now - prev_time).total_seconds() / 3600.0
-                    if elapsed_h > 0:
-                        delta_kwh = curr - prev
-                        power = delta_kwh / elapsed_h
-                    else:
-                        power = 0.0
+                    # energy delta (kWh), clamp negative
+                    delta = curr - prev
+                    if delta < 0:
+                        _LOGGER.debug(
+                            "Energy counter rollover or reset for slave %s: curr=%s prev=%s",
+                            sid, curr, prev
+                        )
+                        delta = 0.0
+                    # fixed 30 s polling interval
+                    secs = self.update_interval.total_seconds()
+                    power = (delta * 3600.0) / secs
+                    _LOGGER.debug(
+                            "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
+                            sid, secs, curr, prev, power
+                        )
 
                 data[inst_key] = {
                     "name": "Instantaneous Power",
@@ -120,9 +122,8 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     "rtype": "U32",
                     "slave_id": sid,
                 }
-                # store current for next cycle
+                # store for next cycle
                 self._last_energy[sid] = curr
-                self._last_time[sid] = now
         return data
 
 
