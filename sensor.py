@@ -19,14 +19,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     SENSOR_TYPES,
 )
-from homeassistant.const import (
-    CONF_HOST,
-    CONF_PORT,
-    CONF_SLAVE_ID,
-    CONF_SCAN_INTERVAL,
-    STATE_CLASS_MEASUREMENT,
-    STATE_CLASS_TOTAL_INCREASING,
-)
+
 from homeassistant.components.sensor import SensorDeviceClass
 
 from .const import (
