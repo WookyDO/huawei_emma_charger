@@ -8,13 +8,19 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-
-from .const import (
-    DOMAIN,
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import (
     CONF_HOST,
     CONF_PORT,
     CONF_SLAVE_ID,
     CONF_SCAN_INTERVAL,
+    STATE_CLASS_MEASUREMENT,
+    STATE_CLASS_TOTAL_INCREASING,
+)
+from homeassistant.components.sensor import SensorDeviceClass
+
+from .const import (
+    DOMAIN,
     DEFAULT_PORT,
     DEFAULT_SLAVE_ID,
     DEFAULT_SCAN_INTERVAL,
@@ -79,7 +85,12 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     )
                     value = _convert(regs, rtype, gain)
                     data_key = f"{key}_{sid}"
-                    data[data_key] = {"name": f"{name} (Slave {sid})", "value": value, "unit": unit}
+                    data[data_key] = {
+                        "name": name,
+                        "value": value,
+                        "unit": unit,
+                        "slave_id": sid,
+                    }
                 except Exception as e:
                     _LOGGER.error("Error reading %s from slave %s: %s", key, sid, e)
             # compute instantaneous power if total_energy present
@@ -89,13 +100,12 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                 curr = data[tot_key]["value"]
                 prev = self._last_energy.get(sid)
                 if prev is None:
-                    # first cycle
                     power = 0.0
                 else:
                     delta = curr - prev  # kWh delta
                     secs = self.update_interval.total_seconds()
                     power = (delta * 3600.0) / secs
-                data[inst_key] = {"name": f"Instantaneous Power (Slave {sid})", "value": round(power, 3), "unit": "kW"}
+                data[inst_key] = {"name": "Instantaneous Power", "value": round(power, 3), "unit": "kW", "slave_id": sid}
                 self._last_energy[sid] = curr
         return data
 
@@ -127,30 +137,53 @@ async def async_setup_entry(
     interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coord = HuaweiEmmaChargerCoordinator(hass, host, port, slave, timedelta(seconds=interval))
     await coord.async_config_entry_first_refresh()
-    ents = [HuaweiEmmaChargerSensor(coord, key) for key in coord.data]
-    async_add_entities(ents)
+    entities: list[SensorEntity] = []
+    for key, info in coord.data.items():
+        slave_id = info.get("slave_id")
+        unit = info.get("unit")
+        # Determine device and state class
+        if unit == "kWh":
+            dev_class = SensorDeviceClass.ENERGY
+            state_class = STATE_CLASS_TOTAL_INCREASING
+        elif unit == "kW":
+            dev_class = SensorDeviceClass.POWER
+            state_class = STATE_CLASS_MEASUREMENT
+        elif unit == "V":
+            dev_class = SensorDeviceClass.VOLTAGE
+            state_class = STATE_CLASS_MEASUREMENT
+        elif unit == "°C":
+            dev_class = SensorDeviceClass.TEMPERATURE
+            state_class = STATE_CLASS_MEASUREMENT
+        else:
+            dev_class = None
+            state_class = STATE_CLASS_MEASUREMENT
+        entity = HuaweiEmmaChargerSensor(
+            coordinator=coord,
+            data_key=key,
+            device_class=dev_class,
+            state_class=state_class,
+        )
+        entities.append(entity)
+    async_add_entities(entities)
 
 
-class HuaweiEmmaChargerSensor(CoordinatorEntity):
-    def __init__(self, coordinator: HuaweiEmmaChargerCoordinator, data_key: str):
+class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
+    def __init__(
+        self,
+        coordinator: HuaweiEmmaChargerCoordinator,
+        data_key: str,
+        device_class: SensorDeviceClass | None,
+        state_class: str,
+    ):
         super().__init__(coordinator)
-        info = coordinator.data[data_key]
         self._key = data_key
-        self._name = info["name"]
-        self._unit = info.get("unit")
+        info = coordinator.data[data_key]
+        self._attr_name = f"{info['name']} (Slave {info['slave_id']})"
+        self._attr_native_unit_of_measurement = info.get("unit")
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
+        self._attr_unique_id = f"{DOMAIN}_{data_key}"
 
     @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def state(self):
+    def native_value(self):
         return self.coordinator.data[self._key]["value"]
-
-    @property
-    def unit_of_measurement(self):
-        return self._unit
-
-    @property
-    def unique_id(self) -> str:
-        return f"{DOMAIN}_{self._key}"
