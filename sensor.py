@@ -190,8 +190,15 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
     ):
         super().__init__(coordinator)
         self._data_key = data_key
+        # Build DeviceInfo once per slave
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{coordinator.host}_{slave_id}")},
+            name=f"Huawei Charger {slave_id}",
+            manufacturer="Huawei",
+            model="EMMA Charger",
+        )
         # Set entity properties
-        self._attr_name = f"{name} (Slave {slave_id})"
+        self._attr_name = name
         if rtype == "STR":
             self._attr_native_unit_of_measurement = None
             self._attr_device_class = None
