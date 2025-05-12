@@ -102,6 +102,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                 last_power = getattr(self, "_last_power", {}).get(sid, 0.0)
                 if prev is None:
                     power = 0.0
+                    delta = 0.0
                 else:
                     # energy delta (kWh), clamp negative
                     delta = curr - prev
@@ -124,7 +125,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
                     sid, secs, curr, prev, power
                     )
-                    
+
                 data[inst_key] = {
                     "name": "Instantaneous Power",
                     "value": round(power, 3),
