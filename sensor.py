@@ -78,7 +78,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     data[data_key] = {
                         "name": f"{name} (Slave {sid})",
                         "value": value,
-                        "unit": unit,
+                        "unit": slave,
                         "slave_id": sid,
                     }
                 except Exception as err:
