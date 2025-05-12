@@ -69,7 +69,7 @@ For each slave device you get:
 | `phase_c_voltage_<slave>`   | numeric | V    | Phase C voltage              |
 | `total_energy_<slave>`      | numeric | kWh  | Total energy delivered       |
 | `charger_temp_<slave>`      | numeric | °C   | Charger temperature          |
-| **`instant_power_<slave>`** | numeric | kW   | Instantaneous charging power |
+| **`instantaneous_power_<slave>`** | numeric | kW   | Instantaneous charging power |
 
 ---
 
