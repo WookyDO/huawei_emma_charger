@@ -9,6 +9,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
 from homeassistant.components.sensor import SensorEntity
+
+from .const import (
+    DOMAIN,
+    CONF_SLAVE_ID,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_PORT,
+    DEFAULT_SLAVE_ID,
+    DEFAULT_SCAN_INTERVAL,
+    SENSOR_TYPES,
+)
 from homeassistant.const import (
     CONF_HOST,
     CONF_PORT,
