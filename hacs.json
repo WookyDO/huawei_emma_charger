@@ -1,0 +1,6 @@
+{
+    "name": "Huawei Emma Charger",
+    "content_in_root": true,
+    "render_readme": true,
+    "homeassistant": "2025.1.0"
+}
