@@ -88,8 +88,9 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     _LOGGER.error(
                         "Error reading sensor %s for slave %s: %s", sensor_key, sid, err
                     )
-            # Compute instantaneous power from total_energy
+                        # Compute instantaneous power from total_energy
             total_key = f"total_energy_{sid}"
+            inst_key = f"instant_power_{sid}"
             if total_key in data:
                 current_energy = data[total_key]["value"]
                 last_energy = self._last_total_energy.get(sid)
@@ -98,10 +99,22 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     interval_s = self.update_interval.total_seconds()
                     delta_kwh = current_energy - last_energy
                     power_kw = delta_kwh * 3600.0 / interval_s
-                    inst_key = f"instant_power_{sid}"
                     data[inst_key] = {
                         "name": f"Instantaneous Power (Slave {sid})",
                         "value": round(power_kw, 3),
+                        "unit": "kW",
+                        "slave_id": sid,
+                    }
+                else:
+                                    else:
+                    # initial run: set sensor to 0
+                    data[inst_key] = {
+                        "name": f"Instantaneous Power (Slave {sid})",
+                        "value": 0,
+                        "unit": "kW",
+                        "slave_id": sid,
+                    })",
+                        "value": None,
                         "unit": "kW",
                         "slave_id": sid,
                     }
