@@ -237,4 +237,18 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
             model="EMMA Charger",
         )
         self._attr_name = f"{name} (Slave {slave_id})"
-        if rtype == 
+        if rtype == "STR":
+            self._attr_native_unit_of_measurement = None
+            self._attr_device_class = None
+            self._attr_state_class = None
+        else:
+            self._attr_native_unit_of_measurement = unit
+            self._attr_device_class = device_class
+            self._attr_state_class = state_class
+        self._attr_unique_id = f"{DOMAIN}_{data_key}"
+
+    @property
+    def native_value(self):
+        """Return the current value of the sensor."""
+        return self.coordinator.data[self._data_key]["value"]
+
