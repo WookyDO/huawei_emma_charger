@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusIOException, ModbusException
 from pymodbus.pdu import ExceptionResponse
@@ -16,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, host: str, port: int, slave: int, scan_interval: int):
+    def __init__(self, hass: HomeAssistant, host: str, port: int, slave: int, scan_interval: timedelta):
         super().__init__(
             hass,
             _LOGGER,
@@ -31,7 +32,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         client = ModbusTcpClient(self.host, port=self.port)
         try:
             if not client.connect():
-                raise ConnectionError(f"Modbus Connect failed to {self.host}:{self.port}")
+                raise ConnectionError(f"Modbus connect failed to {self.host}:{self.port}")
             response = client.read_holding_registers(address, count, unit=slave_id)
             if isinstance(response, ExceptionResponse) or response.isError():
                 raise ModbusException(f"Error reading registers: {response}")
@@ -56,7 +57,6 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     regs = await self.hass.async_add_executor_job(
                         self._read_registers, sid, address, count
                     )
-                    # convert regs to value depending on reg_type (u16, s16, u32, float, etc.)
                     value = _convert(regs, reg_type)
                     data_key = f"{sensor_key}_{sid}"
                     data[data_key] = {
@@ -71,7 +71,6 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
 
 
 def _convert(registers: list[int], reg_type: str):
-    # implement conversion logic based on reg_type
     if reg_type == "u16":
         return registers[0]
     if reg_type == "s16":
@@ -81,9 +80,9 @@ def _convert(registers: list[int], reg_type: str):
         return (registers[0] << 16) + registers[1]
     if reg_type == "float":
         import struct
+
         b = struct.pack('>HH', registers[0], registers[1])
         return struct.unpack('>f', b)[0]
-    # add other cases as needed
     return None
 
 
@@ -95,16 +94,19 @@ async def async_setup_entry(
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, 502)
     slave = entry.data.get(CONF_SLAVE, 1)
-    scan_interval = entry.data.get(CONF_SCAN_INTERVAL, 30)
+    interval_seconds = entry.data.get(CONF_SCAN_INTERVAL, 30)
+    scan_interval = timedelta(seconds=interval_seconds)
 
     coordinator = HuaweiEmmaChargerCoordinator(hass, host, port, slave, scan_interval)
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as err:
+        _LOGGER.error("First refresh failed: %s", err)
+        raise
 
     entities = []
-    for data_key, sensor_info in coordinator.data.items():
-        entities.append(
-            HuaweiEmmaChargerSensor(coordinator, data_key)
-        )
+    for data_key in coordinator.data:
+        entities.append(HuaweiEmmaChargerSensor(coordinator, data_key))
 
     async_add_entities(entities)
 
