@@ -27,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
     """Coordinator to fetch Modbus data and compute instantaneous power."""
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -44,23 +45,23 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         self.host = host
         self.port = port
         self.slave_id = slave_id
-        self._last_total_energy: dict[int, float] = {}
+        self._last_energy: dict[int, float] = {}
 
-    def _read_registers(self, slave_id: int, address: int, count: int):
+    def _read_registers(self, slave: int, address: int, count: int) -> list[int]:
         client = ModbusTcpClient(self.host, port=self.port)
         try:
             if not client.connect():
                 raise ConnectionError(f"Modbus connect failed to {self.host}:{self.port}")
-            response = client.read_holding_registers(address=address, count=count, slave=slave_id)
+            response = client.read_holding_registers(address=address, count=count, slave=slave)
             if isinstance(response, ExceptionResponse) or response.isError():
                 raise ModbusException(f"Error reading registers: {response}")
             return response.registers
         finally:
             client.close()
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, dict]:
         data: dict[str, dict] = {}
-        # Discover charger sub-devices dynamically
+        # Discover subdevices
         chargers = await self.hass.async_add_executor_job(
             identify_subdevices,
             self.host,
@@ -70,72 +71,48 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         )
         for charger in chargers:
             sid = charger["slave_id"]
-            # Read all defined sensors
-            for sensor_key, name, address, quantity, reg_type, gain, unit in SENSOR_TYPES:
+            # read sensors
+            for key, name, addr, qty, rtype, gain, unit in SENSOR_TYPES:
                 try:
                     regs = await self.hass.async_add_executor_job(
-                        self._read_registers, sid, address, quantity
+                        self._read_registers, sid, addr, qty
                     )
-                    value = _convert(regs, reg_type, gain)
-                    data_key = f"{sensor_key}_{sid}"
-                    data[data_key] = {
-                        "name": f"{name} (Slave {sid})",
-                        "value": value,
-                        "unit": unit,
-                        "slave_id": sid,
-                    }
-                except Exception as err:
-                    _LOGGER.error(
-                        "Error reading sensor %s for slave %s: %s", sensor_key, sid, err
-                    )
-                        # Compute instantaneous power from total_energy
-            total_key = f"total_energy_{sid}"
+                    value = _convert(regs, rtype, gain)
+                    data_key = f"{key}_{sid}"
+                    data[data_key] = {"name": f"{name} (Slave {sid})", "value": value, "unit": unit}
+                except Exception as e:
+                    _LOGGER.error("Error reading %s from slave %s: %s", key, sid, e)
+            # compute instantaneous power if total_energy present
+            tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
-            if total_key in data:
-                current_energy = data[total_key]["value"]
-                last_energy = self._last_total_energy.get(sid)
-                if last_energy is not None:
-                    # energy in kWh, interval in seconds -> kW
-                    interval_s = self.update_interval.total_seconds()
-                    delta_kwh = current_energy - last_energy
-                    power_kw = delta_kwh * 3600.0 / interval_s
-                    data[inst_key] = {
-                        "name": f"Instantaneous Power (Slave {sid})",
-                        "value": round(power_kw, 3),
-                        "unit": "kW",
-                        "slave_id": sid,
-                    }
+            if tot_key in data:
+                curr = data[tot_key]["value"]
+                prev = self._last_energy.get(sid)
+                if prev is None:
+                    # first cycle
+                    power = 0.0
                 else:
-                                    else:
-                    # initial run: set sensor to 0
-                    data[inst_key] = {
-                        "name": f"Instantaneous Power (Slave {sid})",
-                        "value": 0,
-                        "unit": "kW",
-                        "slave_id": sid,
-                    })",
-                        "value": None,
-                        "unit": "kW",
-                        "slave_id": sid,
-                    }
-                # store for next cycle
-                self._last_total_energy[sid] = current_energy
+                    delta = curr - prev  # kWh delta
+                    secs = self.update_interval.total_seconds()
+                    power = (delta * 3600.0) / secs
+                data[inst_key] = {"name": f"Instantaneous Power (Slave {sid})", "value": round(power, 3), "unit": "kW"}
+                self._last_energy[sid] = curr
         return data
 
 
-def _convert(registers: list[int], reg_type: str, gain: int):
-    if reg_type == "STR":
-        raw_bytes = b"".join(reg.to_bytes(2, "big") for reg in registers)
-        return raw_bytes.decode("ascii", errors="ignore").rstrip("\x00")
-    if reg_type == "U32":
-        raw = (registers[0] << 16) + registers[1]
-        return raw / gain
-    if reg_type == "I32":
+def _convert(regs: list[int], rtype: str, gain: int):
+    if rtype == "STR":
+        raw = b"".join(r.to_bytes(2, "big") for r in regs)
+        return raw.decode("ascii", errors="ignore").rstrip("\x00")
+    if rtype == "U32":
+        val = (regs[0] << 16) | regs[1]
+        return val / gain
+    if rtype == "I32":
         import struct
-        b = struct.pack(">HH", registers[0], registers[1])
-        raw = struct.unpack(">i", b)[0]
-        return raw / gain
-    _LOGGER.warning("Unknown register type %s", reg_type)
+        b = struct.pack(">HH", regs[0], regs[1])
+        val = struct.unpack(">i", b)[0]
+        return val / gain
+    _LOGGER.warning("Unknown type %s", rtype)
     return None
 
 
@@ -146,30 +123,21 @@ async def async_setup_entry(
 ) -> None:
     host = entry.data.get(CONF_HOST)
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
-    slave_id = entry.data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID)
-    interval_seconds = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    scan_interval = timedelta(seconds=interval_seconds)
-
-    coordinator = HuaweiEmmaChargerCoordinator(
-        hass, host, port, slave_id, scan_interval
-    )
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except Exception as err:
-        _LOGGER.error("First refresh failed: %s", err)
-        raise
-
-    entities = [HuaweiEmmaChargerSensor(coordinator, key) for key in coordinator.data]
-    async_add_entities(entities)
+    slave = entry.data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID)
+    interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    coord = HuaweiEmmaChargerCoordinator(hass, host, port, slave, timedelta(seconds=interval))
+    await coord.async_config_entry_first_refresh()
+    ents = [HuaweiEmmaChargerSensor(coord, key) for key in coord.data]
+    async_add_entities(ents)
 
 
 class HuaweiEmmaChargerSensor(CoordinatorEntity):
     def __init__(self, coordinator: HuaweiEmmaChargerCoordinator, data_key: str):
         super().__init__(coordinator)
-        self.data_key = data_key
         info = coordinator.data[data_key]
+        self._key = data_key
         self._name = info["name"]
-        self._unit = info["unit"]
+        self._unit = info.get("unit")
 
     @property
     def name(self) -> str:
@@ -177,7 +145,7 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity):
 
     @property
     def state(self):
-        return self.coordinator.data.get(self.data_key, {}).get("value")
+        return self.coordinator.data[self._key]["value"]
 
     @property
     def unit_of_measurement(self):
@@ -185,4 +153,4 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity):
 
     @property
     def unique_id(self) -> str:
-        return f"{DOMAIN}_{self.data_key}"
+        return f"{DOMAIN}_{self._key}"
