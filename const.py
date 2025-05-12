@@ -11,7 +11,7 @@ DEFAULT_SLAVE_ID = 82
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 # Register definitions: (key, name, address, quantity, type, gain, unit)
-REGISTER_DEFS = [
+SENSOR_TYPES = [
     ("offering_name",   "Offering name",   30000, 15, "STR",   1,   ""),
     ("esn",             "ESN",             30015, 16, "STR",   1,   ""),
     ("software_version","Software version",30031,16, "STR",   1,   ""),
