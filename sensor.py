@@ -49,7 +49,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         try:
             if not client.connect():
                 raise ConnectionError(f"Modbus connect failed to {self.host}:{self.port}")
-            response = client.read_holding_registers(address, count, unit=slave_id)
+            response = client.read_holding_registers(address, count, slave=slave_id)
             if isinstance(response, ExceptionResponse) or response.isError():
                 raise ModbusException(f"Error reading registers: {response}")
             return response.registers
