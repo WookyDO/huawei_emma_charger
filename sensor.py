@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
-from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, STATE_CLASS_TOTAL_INCREASING
 
 from .const import (
     DOMAIN,
@@ -22,10 +21,14 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     SENSOR_TYPES,
 )
+
 from .read_device_info import identify_subdevices
 
 _LOGGER = logging.getLogger(__name__)
 
+# Home Assistant state class constants (avoid import issues)
+STATE_CLASS_MEASUREMENT = "measurement"
+STATE_CLASS_TOTAL_INCREASING = "total_increasing"
 
 class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
     """Coordinator to fetch Modbus data and compute instantaneous power."""
