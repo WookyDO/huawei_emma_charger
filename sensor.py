@@ -198,7 +198,7 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
             model="EMMA Charger",
         )
         # Set entity properties
-        self._attr_name = name
+        self._attr_name = f"{name} (Slave {slave_id})"
         if rtype == "STR":
             self._attr_native_unit_of_measurement = None
             self._attr_device_class = None
