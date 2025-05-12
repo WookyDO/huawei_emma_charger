@@ -23,6 +23,7 @@ from .const import (
     SENSOR_TYPES,
 )
 from .read_device_info import identify_subdevices
+from homeassistant.helpers.entity import DeviceInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,13 +86,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                         self._read_registers, sid, address, quantity
                     )
                     value = _convert(regs, rtype, gain)
-                    data[data_key] = {
-                        "name": name,
-                        "value": value,
-                        "unit": unit,
-                        "rtype": rtype,
-                        "slave_id": sid,
-                    }
+                    data[data_key] = {"name": name, "value": value, "unit": unit, "rtype": rtype, "slave_id": sid}
                 except Exception as err:
                     _LOGGER.error("Error reading %s from slave %s: %s", key, sid, err)
             # Compute instantaneous power
@@ -100,14 +95,13 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             if tot_key in data:
                 curr = data[tot_key]["value"]
                 prev = self._last_energy.get(sid)
-                power = 0.0 if prev is None else ( (curr - prev) * 3600.0 / self.update_interval.total_seconds() )
-                data[inst_key] = {
-                    "name": "Instantaneous Power",
-                    "value": round(power, 3),
-                    "unit": "kW",
-                    "rtype": "U32",
-                    "slave_id": sid,
-                }
+                if prev is None:
+                    power = 0.0
+                else:
+                    delta = curr - prev  # kWh delta
+                    secs = self.update_interval.total_seconds()
+                    power = (delta * 3600.0) / secs
+                data[inst_key] = {"name": "Instantaneous Power", "value": round(power, 3), "unit": "kW", "rtype": "U32", "slave_id": sid}
                 self._last_energy[sid] = curr
         return data
 
@@ -139,7 +133,6 @@ async def async_setup_entry(
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     slave = entry.data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID)
     interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-
     coordinator = HuaweiEmmaChargerCoordinator(
         hass, host, port, slave, timedelta(seconds=interval)
     )
@@ -147,14 +140,14 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
     for key, info in coordinator.data.items():
-        rtype = info["rtype"]
-        unit = info["unit"]
-        sid = info["slave_id"]
-
+        rtype = info.get("rtype")
+        unit = info.get("unit")
+        slave_id = info.get("slave_id")
         # Determine device_class & state_class
         device_class = None
         state_class = None
         if rtype != "STR":
+            # numeric sensor
             if unit == "kWh":
                 device_class = SensorDeviceClass.ENERGY
                 state_class = STATE_CLASS_TOTAL_INCREASING
@@ -167,21 +160,17 @@ async def async_setup_entry(
             elif unit == "°C":
                 device_class = SensorDeviceClass.TEMPERATURE
                 state_class = STATE_CLASS_MEASUREMENT
-
-        entities.append(
-            HuaweiEmmaChargerSensor(
-                coordinator,
-                host,                 # pass host
-                key,
-                info["name"],
-                rtype,
-                unit,
-                device_class,
-                state_class,
-                sid,
-            )
+        entity = HuaweiEmmaChargerSensor(
+            coordinator,
+            key,
+            info.get("name"),
+            rtype,
+            unit,
+            device_class,
+            state_class,
+            slave_id,
         )
-
+        entities.append(entity)
     async_add_entities(entities)
 
 
@@ -191,7 +180,6 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: HuaweiEmmaChargerCoordinator,
-        host: str,                        # added host
         data_key: str,
         name: str,
         rtype: str,
@@ -202,19 +190,8 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
     ):
         super().__init__(coordinator)
         self._data_key = data_key
-
-        # Name stays generic
-        self._attr_name = name
-
-        # Attach to a DeviceInfo per slave
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{host}_{slave_id}")},
-            name=f"Huawei Charger {slave_id}",
-            manufacturer="Huawei",
-            model="FusionCharge",
-        )
-
-        # Unit and classes only for numeric types
+        # Set entity properties
+        self._attr_name = f"{name} (Slave {slave_id})"
         if rtype == "STR":
             self._attr_native_unit_of_measurement = None
             self._attr_device_class = None
@@ -223,7 +200,6 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
             self._attr_native_unit_of_measurement = unit
             self._attr_device_class = device_class
             self._attr_state_class = state_class
-
         self._attr_unique_id = f"{DOMAIN}_{data_key}"
 
     @property
