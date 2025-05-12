@@ -8,8 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
-from homeassistant.const import STATE_CLASS_MEASUREMENT, STATE_CLASS_TOTAL_INCREASING
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, STATE_CLASS_MEASUREMENT, STATE_CLASS_TOTAL_INCREASING
 
 from .const import (
     CONF_HOST,
