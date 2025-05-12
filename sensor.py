@@ -52,6 +52,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         self.port = port
         self.slave_id = slave_id
         self._last_energy: dict[int, float] = {}
+        self._last_time: dict[int, datetime] = {}
 
     def _read_registers(self, slave: int, address: int, count: int) -> list[int]:
         """Read holding registers from the device."""
@@ -93,16 +94,35 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
             if tot_key in data:
-                curr = data[tot_key]["value"]
+                from datetime import datetime
+
+                curr = data[tot_key]["value"]  # in kWh
+                now = datetime.utcnow()
                 prev = self._last_energy.get(sid)
-                if prev is None:
+                prev_time = self._last_time.get(sid)
+
+                if prev is None or prev_time is None:
+                    # first reading, can't compute a delta
                     power = 0.0
                 else:
-                    delta = curr - prev  # kWh delta
-                    secs = self.update_interval.total_seconds()
-                    power = (delta * 3600.0) / secs
-                data[inst_key] = {"name": "Instantaneous Power", "value": round(power, 3), "unit": "kW", "rtype": "U32", "slave_id": sid}
+                    # actual elapsed hours
+                    elapsed_h = (now - prev_time).total_seconds() / 3600.0
+                    if elapsed_h > 0:
+                        delta_kwh = curr - prev
+                        power = delta_kwh / elapsed_h
+                    else:
+                        power = 0.0
+
+                data[inst_key] = {
+                    "name": "Instantaneous Power",
+                    "value": round(power, 3),
+                    "unit": "kW",
+                    "rtype": "U32",
+                    "slave_id": sid,
+                }
+                # store current for next cycle
                 self._last_energy[sid] = curr
+                self._last_time[sid] = now
         return data
 
 
