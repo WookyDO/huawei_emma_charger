@@ -1,19 +1,19 @@
 # Huawei Emma Charger Integration for Home Assistant
 
-Custom integration to read data for Huawei FusionCharge from Huawei EMMA sub_device over Modbus TCP using `pymodbus`, exposing registers as entities and computing instantaneous charging power.
+Custom integration to read data for Huawei FusionCharge from the EMMA sub-device over Modbus TCP using `pymodbus`, exposing registers as entities and computing instantaneous charging power.
 
 ---
 
-## Features
+## 🔍 Features
 
 * **Modbus polling** of charger registers (strings & numerics)
-* **Instantaneous Power** sensor (`sensor.charger_instant_power`) calculating kW from energy deltas
-* **Autodiscovery of EMMA sub-devices**  
-  Automatically finds all attached “CHARGER” sub-devices and instantiates sensors for each slave ID.  
+* **Instantaneous Power** sensor (`sensor.instant_power_<slave>`) calculating kW from energy deltas
+* **Autodiscovery of EMMA sub-devices**
+  Automatically finds all attached “CHARGER” sub-devices and instantiates sensors for each slave ID.
 
 ---
 
-## Installation
+## 🛠 Installation
 
 ### Install via HACS
 
@@ -32,7 +32,7 @@ Custom integration to read data for Huawei FusionCharge from Huawei EMMA sub_dev
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 1. Go to **Settings → Devices & Services → Add Integration**.
 2. Search for **Huawei Emma Charger**.
@@ -44,37 +44,53 @@ Custom integration to read data for Huawei FusionCharge from Huawei EMMA sub_dev
    * **Scan Interval**: Polling interval in seconds (default `30`)
 4. Finish to add your charger.
 
-Sensors will be created automatically, including the instant power sensor.
+Devices and sensors will be created automatically:
+
+1. **One Device per Charger** (e.g. “Huawei Charger 82”), with all slave’s sensors grouped under it.
+2. **Sensors** for each register per slave.
+3. **Instantaneous Power** sensor per slave.
 
 ---
 
-## Entities
+## 📋 Entities
 
-* `sensor.charger_offering_name` *(string)*
-* `sensor.charger_esn` *(string)*
-* `sensor.charger_software_version` *(string)*
-* `sensor.charger_rated_power` *(numeric, kW)*
-* `sensor.charger_charger_model` *(string)*
-* `sensor.charger_bluetooth_name` *(string)*
-* `sensor.charger_phase_a_voltage` *(numeric, V)*
-* `sensor.charger_phase_b_voltage` *(numeric, V)*
-* `sensor.charger_phase_c_voltage` *(numeric, V)*
-* `sensor.charger_total_energy` *(numeric, kWh)*
-* `sensor.charger_charger_temp` *(numeric, °C)*
-* `sensor.charger_instant_power` *(numeric, kW)*
+For each slave device you get:
+
+| Sensor key                  | Type    | Unit | Description                  |
+| --------------------------- | ------- | ---- | ---------------------------- |
+| `offering_name_<slave>`     | string  | —    | Charger offering name        |
+| `esn_<slave>`               | string  | —    | Charger ESN                  |
+| `software_version_<slave>`  | string  | —    | Firmware version             |
+| `rated_power_<slave>`       | numeric | kW   | Charger rated power          |
+| `charger_model_<slave>`     | string  | —    | Charger model name           |
+| `bluetooth_name_<slave>`    | string  | —    | BLE advertise name           |
+| `phase_a_voltage_<slave>`   | numeric | V    | Phase A voltage              |
+| `phase_b_voltage_<slave>`   | numeric | V    | Phase B voltage              |
+| `phase_c_voltage_<slave>`   | numeric | V    | Phase C voltage              |
+| `total_energy_<slave>`      | numeric | kWh  | Total energy delivered       |
+| `charger_temp_<slave>`      | numeric | °C   | Charger temperature          |
+| **`instant_power_<slave>`** | numeric | kW   | Instantaneous charging power |
 
 ---
 
-## Troubleshooting
+## 🐞 Troubleshooting
 
 * Verify charger accessibility on the Modbus TCP host/port.
-* Check logs under `[custom_components.huawei_emma_charger.*]` for errors.
+* Check logs under `\[custom_components.huawei_emma_charger.*\]` for errors.
 * If used alongside `huawei_solar`, run a **Modbus proxy** (e.g. `modbus-proxy`, `socat`) to multiplex connections.
 
 ---
 
-## Development & Contributions
+## 🚧 TODO
 
-Report issues or contribute at the GitHub repo: [https://github.com/wookydo/huawei\_emma\_charger](https://github.com/wookydo/huawei_emma_charger)
+* **Integration reload** currently does not re-discover sub-devices on reload.
+  Expect a fix in an upcoming release.
 
 ---
+
+## 🤝 Contributing & Support
+
+Report issues or contribute at the GitHub repo:
+[https://github.com/wookydo/huawei\_emma\_charger](https://github.com/wookydo/huawei_emma_charger)
+
+Pull requests welcome!
