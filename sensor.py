@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from pymodbus.client import ModbusTcpClient
-from pymodbus.exceptions import ModbusIOException, ModbusException
+from pymodbus.exceptions import ModbusException
 from pymodbus.pdu import ExceptionResponse
 
 from homeassistant.config_entries import ConfigEntry
@@ -13,7 +13,7 @@ from homeassistant.helpers.entity import DeviceInfo
 
 from .const import (
     DOMAIN,
-    CONF_HOST, 
+    CONF_HOST,
     CONF_PORT,
     CONF_SLAVE_ID,
     CONF_SCAN_INTERVAL,
@@ -77,6 +77,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             self.slave_id,
             int(self.update_interval.total_seconds()),
         )
+
         for charger in chargers:
             sid = charger["slave_id"]
             # Read all defined sensors
@@ -90,6 +91,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     data[data_key] = {"name": name, "value": value, "unit": unit, "rtype": rtype, "slave_id": sid}
                 except Exception as err:
                     _LOGGER.error("Error reading %s from slave %s: %s", key, sid, err)
+
             # Compute instantaneous power
             tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
@@ -99,9 +101,12 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                 prev = self._last_energy.get(sid)
                 last_power = self._last_power.get(sid, 0.0)
 
-                # calculate elapsed seconds
+                # calculate elapsed seconds since last reading
                 prev_time = self._last_time.get(sid)
-                secs = (now - prev_time).total_seconds() if prev_time else self.update_interval.total_seconds()
+                if prev_time:
+                    secs = (now - prev_time).total_seconds()
+                else:
+                    secs = self.update_interval.total_seconds()
 
                 # energy delta (kWh), clamp negative
                 if prev is None:
@@ -118,7 +123,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                 # compute elapsed hours
                 elapsed_h = secs / 3600.0 if secs > 0 else 0
 
-                # compute or reuse last non-zero
+                # compute or reuse last non-zero power
                 power = (delta / elapsed_h) if delta > 0 and elapsed_h > 0 else last_power
                 _LOGGER.debug(
                     "Energy counter calculated for slave %s after %s secs: curr=%s prev=%s power=%s",
@@ -132,11 +137,13 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     "rtype": "U32",
                     "slave_id": sid,
                 }
+
                 # store for next cycle
                 self._last_energy[sid] = curr
                 self._last_time[sid] = now
                 if power > 0:
                     self._last_power[sid] = power
+
         return data
 
 
@@ -181,7 +188,6 @@ async def async_setup_entry(
         device_class = None
         state_class = None
         if rtype != "STR":
-            # numeric sensor
             if unit == "kWh":
                 device_class = SensorDeviceClass.ENERGY
                 state_class = STATE_CLASS_TOTAL_INCREASING
@@ -231,17 +237,4 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
             model="EMMA Charger",
         )
         self._attr_name = f"{name} (Slave {slave_id})"
-        if rtype == "STR":
-            self._attr_native_unit_of_measurement = None
-            self._attr_device_class = None
-            self._attr_state_class = None
-        else:
-            self._attr_native_unit_of_measurement = unit
-            self._attr_device_class = device_class
-            self._attr_state_class = state_class
-        self._attr_unique_id = f"{DOMAIN}_{data_key}"
-
-    @property
-    def native_value(self):
-        """Return the current value of the sensor."""
-        return self.coordinator.data[self._data_key]["value"]
+        if rtype == 
