@@ -26,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
+    """Coordinator to fetch Modbus data and compute instantaneous power."""
     def __init__(
         self,
         hass: HomeAssistant,
@@ -43,13 +44,13 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         self.host = host
         self.port = port
         self.slave_id = slave_id
+        self._last_total_energy: dict[int, float] = {}
 
     def _read_registers(self, slave_id: int, address: int, count: int):
         client = ModbusTcpClient(self.host, port=self.port)
         try:
             if not client.connect():
                 raise ConnectionError(f"Modbus connect failed to {self.host}:{self.port}")
-            # use slave= instead of deprecated unit=
             response = client.read_holding_registers(address=address, count=count, slave=slave_id)
             if isinstance(response, ExceptionResponse) or response.isError():
                 raise ModbusException(f"Error reading registers: {response}")
@@ -58,7 +59,8 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             client.close()
 
     async def _async_update_data(self):
-        data = {}
+        data: dict[str, dict] = {}
+        # Discover charger sub-devices dynamically
         chargers = await self.hass.async_add_executor_job(
             identify_subdevices,
             self.host,
@@ -68,6 +70,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         )
         for charger in chargers:
             sid = charger["slave_id"]
+            # Read all defined sensors
             for sensor_key, name, address, quantity, reg_type, gain, unit in SENSOR_TYPES:
                 try:
                     regs = await self.hass.async_add_executor_job(
@@ -85,6 +88,25 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     _LOGGER.error(
                         "Error reading sensor %s for slave %s: %s", sensor_key, sid, err
                     )
+            # Compute instantaneous power from total_energy
+            total_key = f"total_energy_{sid}"
+            if total_key in data:
+                current_energy = data[total_key]["value"]
+                last_energy = self._last_total_energy.get(sid)
+                if last_energy is not None:
+                    # energy in kWh, interval in seconds -> kW
+                    interval_s = self.update_interval.total_seconds()
+                    delta_kwh = current_energy - last_energy
+                    power_kw = delta_kwh * 3600.0 / interval_s
+                    inst_key = f"instant_power_{sid}"
+                    data[inst_key] = {
+                        "name": f"Instantaneous Power (Slave {sid})",
+                        "value": round(power_kw, 3),
+                        "unit": "kW",
+                        "slave_id": sid,
+                    }
+                # store for next cycle
+                self._last_total_energy[sid] = current_energy
         return data
 
 
@@ -124,8 +146,7 @@ async def async_setup_entry(
         _LOGGER.error("First refresh failed: %s", err)
         raise
 
-    entities = [HuaweiEmmaChargerSensor(coordinator, data_key)
-                for data_key in coordinator.data]
+    entities = [HuaweiEmmaChargerSensor(coordinator, key) for key in coordinator.data]
     async_add_entities(entities)
 
 
@@ -133,9 +154,9 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity):
     def __init__(self, coordinator: HuaweiEmmaChargerCoordinator, data_key: str):
         super().__init__(coordinator)
         self.data_key = data_key
-        sensor_info = coordinator.data[data_key]
-        self._name = sensor_info["name"]
-        self._unit = sensor_info["unit"]
+        info = coordinator.data[data_key]
+        self._name = info["name"]
+        self._unit = info["unit"]
 
     @property
     def name(self) -> str:
