@@ -8,11 +8,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, CoordinatorEntity
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.const import STATE_CLASS_MEASUREMENT, STATE_CLASS_TOTAL_INCREASING
 
 from .const import (
-    DOMAIN,
     CONF_HOST,
+    CONF_PORT,
+    DOMAIN,
     CONF_SLAVE_ID,
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
@@ -20,9 +22,6 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     SENSOR_TYPES,
 )
-
-from homeassistant.components.sensor import SensorDeviceClass
-
 from .read_device_info import identify_subdevices
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +50,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         self._last_energy: dict[int, float] = {}
 
     def _read_registers(self, slave: int, address: int, count: int) -> list[int]:
+        """Read holding registers from the device."""
         client = ModbusTcpClient(self.host, port=self.port)
         try:
             if not client.connect():
@@ -63,8 +63,8 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             client.close()
 
     async def _async_update_data(self) -> dict[str, dict]:
+        """Fetch data and compute instantaneous power for each charger."""
         data: dict[str, dict] = {}
-        # Discover subdevices
         chargers = await self.hass.async_add_executor_job(
             identify_subdevices,
             self.host,
@@ -74,11 +74,11 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
         )
         for charger in chargers:
             sid = charger["slave_id"]
-            # read sensors
-            for key, name, addr, qty, rtype, gain, unit in SENSOR_TYPES:
+            # Read all defined sensors
+            for key, name, address, quantity, rtype, gain, unit in SENSOR_TYPES:
                 try:
                     regs = await self.hass.async_add_executor_job(
-                        self._read_registers, sid, addr, qty
+                        self._read_registers, sid, address, quantity
                     )
                     value = _convert(regs, rtype, gain)
                     data_key = f"{key}_{sid}"
@@ -88,9 +88,9 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                         "unit": unit,
                         "slave_id": sid,
                     }
-                except Exception as e:
-                    _LOGGER.error("Error reading %s from slave %s: %s", key, sid, e)
-            # compute instantaneous power if total_energy present
+                except Exception as err:
+                    _LOGGER.error("Error reading %s from slave %s: %s", key, sid, err)
+            # Compute instantaneous power
             tot_key = f"total_energy_{sid}"
             inst_key = f"instant_power_{sid}"
             if tot_key in data:
@@ -102,12 +102,18 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
                     delta = curr - prev  # kWh delta
                     secs = self.update_interval.total_seconds()
                     power = (delta * 3600.0) / secs
-                data[inst_key] = {"name": "Instantaneous Power", "value": round(power, 3), "unit": "kW", "slave_id": sid}
+                data[inst_key] = {
+                    "name": "Instantaneous Power",
+                    "value": round(power, 3),
+                    "unit": "kW",
+                    "slave_id": sid,
+                }
                 self._last_energy[sid] = curr
         return data
 
 
 def _convert(regs: list[int], rtype: str, gain: int):
+    """Convert raw register values based on type and gain."""
     if rtype == "STR":
         raw = b"".join(r.to_bytes(2, "big") for r in regs)
         return raw.decode("ascii", errors="ignore").rstrip("\x00")
@@ -128,43 +134,48 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
+    """Set up the sensors from the config entry."""
     host = entry.data.get(CONF_HOST)
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     slave = entry.data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID)
     interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    coord = HuaweiEmmaChargerCoordinator(hass, host, port, slave, timedelta(seconds=interval))
-    await coord.async_config_entry_first_refresh()
+    coordinator = HuaweiEmmaChargerCoordinator(
+        hass, host, port, slave, timedelta(seconds=interval)
+    )
+    await coordinator.async_config_entry_first_refresh()
+
     entities: list[SensorEntity] = []
-    for key, info in coord.data.items():
-        slave_id = info.get("slave_id")
+    for key, info in coordinator.data.items():
         unit = info.get("unit")
-        # Determine device and state class
+        # Determine device_class & state_class
         if unit == "kWh":
-            dev_class = SensorDeviceClass.ENERGY
+            device_class = SensorDeviceClass.ENERGY
             state_class = STATE_CLASS_TOTAL_INCREASING
         elif unit == "kW":
-            dev_class = SensorDeviceClass.POWER
+            device_class = SensorDeviceClass.POWER
             state_class = STATE_CLASS_MEASUREMENT
         elif unit == "V":
-            dev_class = SensorDeviceClass.VOLTAGE
+            device_class = SensorDeviceClass.VOLTAGE
             state_class = STATE_CLASS_MEASUREMENT
         elif unit == "°C":
-            dev_class = SensorDeviceClass.TEMPERATURE
+            device_class = SensorDeviceClass.TEMPERATURE
             state_class = STATE_CLASS_MEASUREMENT
         else:
-            dev_class = None
+            device_class = None
             state_class = STATE_CLASS_MEASUREMENT
         entity = HuaweiEmmaChargerSensor(
-            coordinator=coord,
-            data_key=key,
-            device_class=dev_class,
-            state_class=state_class,
+            coordinator,
+            key,
+            device_class,
+            state_class,
         )
         entities.append(entity)
     async_add_entities(entities)
 
 
 class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
+    """Sensor entity for Huawei EMMA Charger readings."""
+
     def __init__(
         self,
         coordinator: HuaweiEmmaChargerCoordinator,
@@ -173,14 +184,16 @@ class HuaweiEmmaChargerSensor(CoordinatorEntity, SensorEntity):
         state_class: str,
     ):
         super().__init__(coordinator)
-        self._key = data_key
         info = coordinator.data[data_key]
+        # Set entity properties
         self._attr_name = f"{info['name']} (Slave {info['slave_id']})"
         self._attr_native_unit_of_measurement = info.get("unit")
         self._attr_device_class = device_class
         self._attr_state_class = state_class
         self._attr_unique_id = f"{DOMAIN}_{data_key}"
+        self._data_key = data_key
 
     @property
     def native_value(self):
-        return self.coordinator.data[self._key]["value"]
+        """Return the current value of the sensor."""
+        return self.coordinator.data[self._data_key]["value"]
