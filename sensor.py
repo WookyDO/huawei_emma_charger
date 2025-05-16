@@ -31,7 +31,7 @@ STATE_CLASS_MEASUREMENT = "measurement"
 STATE_CLASS_TOTAL_INCREASING = "total_increasing"
 
 class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
-    """Coordinator to fetch Modbus data and compute instantaneous power."""
+    """Coordinator to fetch Modbus data"""
 
     def __init__(
         self,
@@ -68,7 +68,7 @@ class HuaweiEmmaChargerCoordinator(DataUpdateCoordinator):
             client.close()
 
     async def _async_update_data(self) -> dict[str, dict]:
-        """Fetch data and compute instantaneous power for each charger."""
+        """Fetch data for each charger."""
         data: dict[str, dict] = {}
         chargers = await self.hass.async_add_executor_job(
             identify_subdevices,

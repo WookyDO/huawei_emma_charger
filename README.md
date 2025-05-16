@@ -1,13 +1,12 @@
 # Huawei Emma Charger Integration for Home Assistant
 
-Custom integration to read data for Huawei FusionCharge from the EMMA sub-device over Modbus TCP using `pymodbus`, exposing registers as entities and computing instantaneous charging power.
+Custom integration to read data for Huawei FusionCharge from the EMMA sub-device over Modbus TCP using `pymodbus`, exposing registers as entities.
 
 ---
 
 ## 🔍 Features
 
 * **Modbus polling** of charger registers (strings & numerics)
-* **Instantaneous Power** sensor (`sensor.instant_power_<slave>`) calculating kW from energy deltas
 * **Autodiscovery of EMMA sub-devices**
   Automatically finds all attached “CHARGER” sub-devices and instantiates sensors for each slave ID.
 
@@ -48,7 +47,6 @@ Devices and sensors will be created automatically:
 
 1. **One Device per Charger** (e.g. “Huawei Charger 82”), with all slave’s sensors grouped under it.
 2. **Sensors** for each register per slave.
-3. **Instantaneous Power** sensor per slave.
 
 ---
 
@@ -59,6 +57,7 @@ For each slave device you get:
 | Sensor key                  | Type    | Unit | Description                  |
 | --------------------------- | ------- | ---- | ---------------------------- |
 | `offering_name_<slave>`     | string  | —    | Charger offering name        |
+| `device_name_<slave>`       | string  | —    | Device name                  |
 | `esn_<slave>`               | string  | —    | Charger ESN                  |
 | `software_version_<slave>`  | string  | —    | Firmware version             |
 | `rated_power_<slave>`       | numeric | kW   | Charger rated power          |
@@ -69,7 +68,6 @@ For each slave device you get:
 | `phase_c_voltage_<slave>`   | numeric | V    | Phase C voltage              |
 | `total_energy_<slave>`      | numeric | kWh  | Total energy delivered       |
 | `charger_temp_<slave>`      | numeric | °C   | Charger temperature          |
-| **`instantaneous_power_<slave>`** | numeric | kW   | Instantaneous charging power |
 
 ---
 
