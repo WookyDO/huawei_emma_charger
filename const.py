@@ -23,4 +23,5 @@ SENSOR_TYPES = [
     ("phase_c_voltage",  "Phase C voltage",  30504, 2,  "U32",  10,   "V"),
     ("total_energy",     "Total energy",     30506, 2,  "U32", 1000,  "kWh"),
     ("charger_temp",     "Charger temp.",    30508, 2,  "I32",  10,   "°C"),
+    ("device_name",      "Device Name",      65524,10,  "STR",   1,     ""),
 ]
