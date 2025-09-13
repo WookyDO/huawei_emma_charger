@@ -1,3 +1,6 @@
+This project is archived as same data now as part of huawei_solar integration (starting with 1.6beta) I will not continue here as all features are now part of one integration.
+
+
 # Huawei Emma Charger Integration for Home Assistant
 
 Custom integration to read data for Huawei FusionCharge from the EMMA sub-device over Modbus TCP using `pymodbus`, exposing registers as entities.
